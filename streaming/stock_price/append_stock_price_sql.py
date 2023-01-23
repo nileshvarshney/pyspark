@@ -1,6 +1,10 @@
 import sys
 from pyspark.sql import SparkSession
 from pyspark.sql.types import StringType, StructField, StructType
+from pyspark.sql.functions import input_file_name
+
+# example with cleanSource archive strategy
+# carefully execute it
 
 def main():
     if len(sys.argv) != 1:
@@ -32,8 +36,14 @@ def main():
     stock_price_df = sparkSession\
         .readStream\
         .option('header','true')\
+        .option("maxFilesPerTrigger", 1)\
+        .option("cleanSource", "archive")\
+        .option("sourceArchiveDir","streaming/stock_price/data/archive")\
         .schema(stock_schema)\
-        .csv('./data')
+        .csv('streaming/stock_price/data/stock_data/FB*.csv')
+
+    # include filename
+    stock_price_df = stock_price_df.withColumn("filename", input_file_name())
 
     stock_price_df.createOrReplaceTempView('stocks')
 
@@ -41,11 +51,10 @@ def main():
         SELECT
             Name,
             Date,
-            Open,
-            Close,
-            (Open - Close) as day_diff
+            (Open - Close) as day_diff,
+            filename
         FROM stocks 
-        WHERE Open - Close > 15
+        WHERE Open - Close > 5
     """)
 
     query = stock_df\

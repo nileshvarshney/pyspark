@@ -5,11 +5,12 @@
 
 from pyspark.sql import SparkSession
 from pyspark.sql.types import *
-from pyspark.sql.functions import udf, broadcast
+from pyspark.sql.functions import udf, broadcast, current_timestamp, year
 
 def main():
     sparkSession = SparkSession\
         .builder\
+        .master('local')\
         .appName('UDF and Broadcast')\
         .getOrCreate()
 
@@ -28,31 +29,38 @@ def main():
         StructField('Name', StringType(), True)
     ])
 
-    stocks = sparkSession\
-        .readStream.option('header','true')\
-        .schema(stockSchema).csv('./data')
+    stocks = (
+        sparkSession
+        .readStream
+        .option('header','true')
+        .option("maxFilesPerTrigger", 1) # read one file at a time
+        .schema(stockSchema)
+        .csv('streaming/stock_price/data/stock_data/*.csv')
+    )
 
     print('Is streaming', stocks.isStreaming)
-    print(stocks.printSchema())
+    # print(stocks.printSchema())
 
-    # User Function
+    # User Defined Function
     def daily_price_delta(open_price, close_price):
         return close_price - open_price
 
     # Registering UDF
     sparkSession.udf.register('calculated_price_delta_udf',daily_price_delta, DoubleType())
-    #calculated_price_delta_udf = udf(daily_price_delta, DoubleType())
 
+    # add ingestion time and calculate year
+    stocks = stocks.withColumn("ingetion_time", current_timestamp()).withColumn("year", year("Date"))
+    
     stocks.createOrReplaceTempView('stock')
 
     # Broadcasting
     price_delta_broadcast_df = broadcast(sparkSession.sql(
-        """ Select Date, Name, calculated_price_delta_udf(Open, Close) delta_price
+        """ Select year, ingetion_time, Date, Name, calculated_price_delta_udf(Open, Close) delta_price
             from stock where calculated_price_delta_udf(Open, Close) > 15
         """
     ))
 
-    price_delta_df = price_delta_broadcast_df.select("Date", "Name", "delta_price")
+    price_delta_df = price_delta_broadcast_df.select("year", "ingetion_time", "Date", "Name", "delta_price")
 
 
     query = price_delta_df\

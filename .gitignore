@@ -1,3 +1,7 @@
 # Ignore Mac system files
 .DS_store
 .vscode
+.ipynb_checkpoints
+.pytest_cache
+.idea
+derby.log

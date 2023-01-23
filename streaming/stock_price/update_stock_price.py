@@ -13,6 +13,7 @@ def main():
     # create spark session
     sparkSession = SparkSession\
         .builder\
+        .master('local')\
         .appName('update_stock_price')\
         .getOrCreate()
 
@@ -34,13 +35,14 @@ def main():
     stock_df = sparkSession\
         .readStream\
         .option('header','true')\
-        .option('maxFilesPerTrigger',10)\
+        .option('maxFilesPerTrigger',4)\
         .schema(stockSchema)\
-        .csv('./data')
+        .csv('streaming/stock_price/data/stock_data/*.csv')
 
     # aggregate data min open price and max close price
     min_max_by_stock = stock_df\
-        .groupBy('Name')\
+        .withColumn('year', year("Date"))\
+        .groupBy(['Name','year'])\
         .agg({'Open' : 'min', 'Close' : 'max'})\
         .withColumnRenamed('min(Open)', 'min_open')\
         .withColumnRenamed('max(Close)','max_close')

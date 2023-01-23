@@ -11,13 +11,14 @@ def main():
         exit(-1)
 
     # create spark session
-    sparkSession = SparkSession\
-        .builder\
-        .appName('update_stock_price_sql')\
-        .getOrCreate()
-
+    spark = (
+            SparkSession
+            .builder
+            .master('local')
+            .appName('update_stock_price_sql')
+            .getOrCreate()
+    )
     # define schema
-    # Date,Open,High,Low,Close,Adj Close,Volume,Name
     stockSchema = StructType([
         StructField('Date', DateType(), True),
         StructField('Open', DoubleType(), True),
@@ -29,18 +30,22 @@ def main():
         StructField('Name', StringType(), True)
     ])
 
-    sparkSession.sparkContext.setLogLevel('ERROR')
+    spark.sparkContext.setLogLevel('ERROR')
 
-    stock_df = sparkSession\
+    stock_df = (
+        spark\
         .readStream\
         .option('header','true')\
         .option('maxFilesPerTrigger',10)\
         .schema(stockSchema)\
-        .csv('./data')
+        .csv('streaming/stock_price/data/stock_data/*.csv')
+    )
 
+
+    # create temp view
     stock_df.createOrReplaceTempView('stocks_update')
 
-    stock_sql = sparkSession.sql("""
+    stock_sql = spark.sql("""
         SELECT 
             Name,
             min(Open) min_open,
@@ -56,14 +61,16 @@ def main():
     )
 
 
-    query = stock_sql\
-        .writeStream\
-        .outputMode('update')\
-        .format('console')\
-        .option('truncate' ,'false')\
-        .option('numRows', 10)\
-        .start()\
+    query = (
+        stock_sql
+        .writeStream
+        .outputMode('update')
+        # Data source csv does not support Update output mode
+        .format('console')
+        .option('truncate' ,'false')
+        .option('numRows', 10)
+        .start()
         .awaitTermination()
-
+    )
 if __name__ == "__main__":
     main()

@@ -36,24 +36,33 @@ def main():
         .option('header','true')\
         .option('maxFilesPerTrigger',2)\
         .schema(stockSchema)\
-        .csv('./data')
+        .csv('streaming/stock_price/data/stock_data/*.csv')
 
     # aggregate data min open price and max close price
-    min_max_by_stock = stock_df\
-        .groupBy('Name')\
-        .agg({'Open' : 'min', 'Close' : 'max'})\
-        .withColumnRenamed('min(Open)', 'min_open')\
+    min_max_by_stock = (
+        stock_df
+        .withColumn('year', year("Date"))
+        .groupBy(['Name','year'])
+        .agg({'Open' : 'min', 'Close' : 'max'})
+        .withColumnRenamed('min(Open)', 'min_open')
         .withColumnRenamed('max(Close)','max_close')
+    )
 
-
-    query = min_max_by_stock\
-        .writeStream\
-        .outputMode('complete')\
-        .format('console')\
-        .option('truncate' ,'false')\
-        .option('numRows', 10)\
-        .start()\
+ 
+    query = (
+        min_max_by_stock
+        .writeStream
+        .outputMode('complete')
+        # complet mode does not support csv 
+        # .format("csv")
+        # .option("path", "streaming/stock_price/data/output")
+        # .option("header", "true")
+        # .option("checkpointLocation", "streaming/stock_price/data/checkpointLocation")
+        .format('console')
+        .option('truncate' ,'false')
+        .option('numRows', 10)
+        .start()
         .awaitTermination()
-
+    )
 if __name__ == "__main__":
     main()

@@ -16,8 +16,13 @@ def main():
     spark = SparkSession\
         .builder\
         .appName("World Happiness")\
+        .master("local[*]")\
+        .config("spark.sql.shuffle.partitions", 3)\
+        .config("spark.streaming.stopGracefullyOnShutdown","true")\
+        .config("spark.sql.streaming.schemaInference", "true")\
         .getOrCreate()
 
+    spark.sparkContext.setLogLevel('ERROR')
 
     readStream = spark\
         .readStream\
@@ -26,7 +31,7 @@ def main():
         .option('port', port)\
         .load()
 
-
+    # split the input string to exttact the country, region and happieness score
     readStream_df = readStream.selectExpr("split(value, ',')[0] as Country",\
                                  "split(value, ',')[1] as Region",\
                                  "split(value, ',')[2] as HappinessScore"\
@@ -34,14 +39,17 @@ def main():
 
     readStream_df.createOrReplaceTempView("happiness")
 
-    averageScore = spark.sql("""SELECT 
-                                    Region, 
-                                    AVG(HappinessScore) as Avg_Happiness_Score
-                                FROM happiness
-                                GROUP BY Region"""
-                             )    
+    sql_stmt = """
+                    SELECT 
+                        Region, 
+                        AVG(HappinessScore) as Avg_Happiness_Score
+                    FROM happiness
+                    GROUP BY Region
+                """
 
     
+    averageScore = spark.sql(sql_stmt)    
+
     query = averageScore\
         .writeStream\
         .format('console')\
